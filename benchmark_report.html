@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek-V4-Flash NVFP4 — SM121 Optimization Report</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    line-height: 1.6;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  header {
+    text-align: center;
+    padding: 3rem 0;
+    border-bottom: 1px solid #1a1a2e;
+    margin-bottom: 2rem;
+  }
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+  .subtitle { color: #888; font-size: 1.1rem; }
+  .badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0.25rem;
+  }
+  .badge-green { background: #064e3b; color: #34d399; }
+  .badge-yellow { background: #451a03; color: #fbbf24; }
+  .badge-red { background: #450a0a; color: #f87171; }
+  .badge-blue { background: #0c4a6e; color: #38bdf8; }
+  .section {
+    background: #111118;
+    border: 1px solid #1a1a2e;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  h2 {
+    font-size: 1.5rem;
+    color: #00d4ff;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  h3 { font-size: 1.1rem; color: #c084fc; margin: 1rem 0 0.5rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #1a1a2e;
+  }
+  th {
+    color: #888;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+  }
+  tr:hover { background: #1a1a2e; }
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .metric-card {
+    background: #0f0f16;
+    border: 1px solid #1a1a2e;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #00d4ff;
+  }
+  .metric-label {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 0.25rem;
+  }
+  .code-block {
+    background: #0a0a0f;
+    border: 1px solid #1a1a2e;
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+  }
+  .code-block .comment { color: #6b7280; }
+  .code-block .string { color: #34d399; }
+  .code-block .keyword { color: #c084fc; }
+  .code-block .number { color: #fbbf24; }
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #1a1a2e;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+  .timeline {
+    position: relative;
+    padding-left: 2rem;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #1a1a2e;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 1.5rem;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -1.85rem;
+    top: 0.25rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #00d4ff;
+    border: 2px solid #0a0a0f;
+  }
+  .timeline-item.done::before { background: #34d399; }
+  .timeline-item.blocked::before { background: #f87171; }
+  .timeline-item.pending::before { background: #fbbf24; }
+  footer {
+    text-align: center;
+    padding: 2rem;
+    border-top: 1px solid #1a1a2e;
+    color: #888;
+    font-size: 0.9rem;
+  }
+  a { color: #00d4ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  @media (max-width: 768px) {
+    .container { padding: 1rem; }
+    h1 { font-size: 1.75rem; }
+    .metric-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>DeepSeek-V4-Flash NVFP4</h1>
+  <p class="subtitle">SM121 Optimization Report — Dual GB10 Deployment</p>
+  <div style="margin-top: 1rem;">
+    <span class="badge badge-blue">vLLM 0.22.1</span>
+    <span class="badge badge-blue">Ray 2.55.1</span>
+    <span class="badge badge-yellow">SM12.1</span>
+    <span class="badge badge-green">NVFP4</span>
+    <span class="badge badge-red">BLOCKED</span>
+  </div>
+</header>
+
+<div class="section">
+  <h2>📊 Executive Summary</h2>
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-value">78<span style="font-size:1rem;color:#888">/100</span></div>
+      <div class="metric-label">Project Score</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">168<span style="font-size:1rem;color:#888">GB</span></div>
+      <div class="metric-label">Model Size</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">2<span style="font-size:1rem;color:#888">×</span></div>
+      <div class="metric-label">GB10 Nodes</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">46<span style="font-size:1rem;color:#888">/46</span></div>
+      <div class="metric-label">Shards Loaded</div>
+    </div>
+  </div>
+  <p style="margin-top:1rem;color:#fbbf24;">
+    <strong>Status:</strong> Model weights load successfully across dual GB10 nodes via Ray + NCCL, but inference is blocked by PyTorch FP8 ScalarType 44 (float8_e4m3fn) incompatibility on SM12.1.
+  </p>
+</div>
+
+<div class="section">
+  <h2>✅ Resolved Issues</h2>
+  <table>
+    <tr><th>Issue</th><th>Severity</th><th>Resolution</th></tr>
+    <tr>
+      <td><strong>DSV4-001</strong> Model Fit</td>
+      <td><span class="badge badge-green">Critical</span></td>
+      <td>168 GB model fits on dual GB10 (243 GB total) with ~75 GB headroom</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-002</strong> Published Checkpoint</td>
+      <td><span class="badge badge-green">Critical</span></td>
+      <td>Verified <code>nvidia/DeepSeek-V4-Flash-NVFP4</code> (96k+ downloads, official ModelOpt)</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-003</strong> vLLM Registry</td>
+      <td><span class="badge badge-green">Critical</span></td>
+      <td>vLLM 0.22.1 has native <code>DeepseekV4ForCausalLM</code> support</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-004</strong> Multi-Node Ray</td>
+      <td><span class="badge badge-green">High</span></td>
+      <td>Ray cluster established across nodes with Python 3.11 sync, NCCL over QSFP</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-005</strong> Weight Sync</td>
+      <td><span class="badge badge-green">High</span></td>
+      <td>157 GB synced to node2 via rsync over 100 Gbps QSFP (~2.5 min)</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-006</strong> Config Patch</td>
+      <td><span class="badge badge-green">Medium</span></td>
+      <td>Added <code>quant_method: modelopt_mixed</code> to <code>hf_quant_config.json</code></td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>🔴 Active Blockers</h2>
+  <table>
+    <tr><th>Issue</th><th>Severity</th><th>Root Cause</th><th>Impact</th></tr>
+    <tr>
+      <td><strong>DSV4-BL-001</strong> FP8 ScalarType 44</td>
+      <td><span class="badge badge-red">Critical</span></td>
+      <td>PyTorch on GB10 does not support <code>float8_e4m3fn</code> (ScalarType 44)</td>
+      <td>Model loads but KV cache initialization fails</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-BL-002</strong> SwiGLU Clamp</td>
+      <td><span class="badge badge-red">Critical</span></td>
+      <td>Only <code>flashinfer_trtllm</code> supports <code>swiglu_limit</code>; doesn't work on SM12.1</td>
+      <td>Requires patching config (workaround applied)</td>
+    </tr>
+    <tr>
+      <td><strong>DSV4-BL-003</strong> torch.compile</td>
+      <td><span class="badge badge-yellow">High</span></td>
+      <td><code>auto_functionalized</code> not removed in inductor pipeline</td>
+      <td>Requires <code>enforce_eager=True</code></td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>🔧 Workarounds Applied</h2>
+  <h3>1. SwiGLU Limit Patch</h3>
+  <div class="code-block">
+<span class="comment"># Patched config.json on both nodes</span>
+<span class="keyword">sed</span> -i <span class="string">'s/"swiglu_limit": 10.0/"swiglu_limit": null/'</span> config.json
+  </div>
+  <p>Allows <code>flashinfer_b12x</code> backend to load (SM121-specific CUTLASS backend).</p>
+
+  <h3>2. Eager Mode</h3>
+  <div class="code-block">
+<span class="comment"># Disabled torch.compile and CUDAGraphs</span>
+llm = LLM(
+    ...,
+    enforce_eager=<span class="keyword">True</span>,
+)
+  </div>
+  <p>Bypasses <code>auto_functionalized</code> compilation error.</p>
+
+  <h3>3. Ray Cluster on Port 6380</h3>
+  <div class="code-block">
+<span class="comment"># Node 1 (head)</span>
+ray start --head --port=<span class="number">6380</span> --node-ip-address=<span class="number">192.168.100.10</span>
+
+<span class="comment"># Node 2 (worker)</span>
+ray start --address=<span class="string">'192.168.100.10:6380'</span> --node-ip-address=<span class="number">192.168.100.11</span>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📈 Loading Performance</h2>
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="metric-value">~14.5<span style="font-size:1rem;color:#888">s</span></div>
+      <div class="metric-label">Per Shard</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">~11<span style="font-size:1rem;color:#888">min</span></div>
+      <div class="metric-label">Total Load Time</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">77.95<span style="font-size:1rem;color:#888">GiB</span></div>
+      <div class="metric-label">GPU Memory (per node)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">163.5<span style="font-size:1rem;color:#888">s</span></div>
+      <div class="metric-label">Worker Init Time</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>🛠️ Recommended Next Steps</h2>
+  <div class="timeline">
+    <div class="timeline-item blocked">
+      <strong>PyTorch FP8 Support</strong>
+      <p>Upgrade PyTorch to a build with SM12.1 FP8 ScalarType 44 support. Requires NVIDIA PyTorch 2.6+ with Blackwell support.</p>
+    </div>
+    <div class="timeline-item blocked">
+      <strong>SwiGLU Kernel Update</strong>
+      <p>Wait for vLLM to add SwiGLU clamp support to <code>flashinfer_b12x</code> backend, or for <code>flashinfer_trtllm</code> to support SM12.1.</p>
+    </div>
+    <div class="timeline-item pending">
+      <strong>Alternative: DeepSeek-V3</strong>
+      <p>Switch to DeepSeek-V3 (236B params, ~37B active). No published NVFP4 checkpoint, but quantization pipeline is documented.</p>
+    </div>
+    <div class="timeline-item pending">
+      <strong>Alternative: Container Deployment</strong>
+      <p>Use NVIDIA's NGC container with pre-built PyTorch + vLLM for Blackwell.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📋 Environment</h2>
+  <table>
+    <tr><th>Component</th><th>Version</th></tr>
+    <tr><td>vLLM</td><td>0.22.1</td></tr>
+    <tr><td>Ray</td><td>2.55.1</td></tr>
+    <tr><td>PyTorch</td><td>2.11.0</td></tr>
+    <tr><td>CUDA</td><td>12.8</td></tr>
+    <tr><td>NCCL</td><td>2.28.9</td></tr>
+    <tr><td>Python</td><td>3.11.15 (node1), 3.11.15 (node2 via uv)</td></tr>
+    <tr><td>GPU</td><td>NVIDIA GB10 × 2 (SM 12.1)</td></tr>
+    <tr><td>Interconnect</td><td>QSFP 100 Gbps (MTU 9000)</td></tr>
+    <tr><td>Network</td><td>192.168.100.10/14 (node1), 192.168.100.11/15 (node2)</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>📝 Key Logs</h2>
+  <div class="code-block">
+<span class="comment"># Successful worker initialization</span>
+Worker_TP1: Using <span class="string">'FLASHINFER_B12X'</span> NvFp4 MoE backend
+Worker_TP1: Model loading took <span class="number">77.95</span> GiB memory and <span class="number">163.5</span> seconds
+
+<span class="comment"># Fatal error</span>
+RuntimeError: Worker failed with error <span class="string">'ScalarType 44 not supported'</span>
+  </div>
+</div>
+
+<footer>
+  <p>Generated 2026-06-13 · Dual GB10 (SM121) · <a href="https://github.com/r0b0tlab">r0b0tlab</a></p>
+  <p style="margin-top:0.5rem;font-size:0.8rem;color:#666;">
+    DeepSeek-V4-Flash NVFP4 deployment blocked by PyTorch FP8 ScalarType 44 on SM12.1.
+    Requires upstream PyTorch/vLLM update for Blackwell support.
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
