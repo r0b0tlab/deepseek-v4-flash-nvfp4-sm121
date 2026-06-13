@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  deepseek-v4-nvfp4:
+    image: ghcr.io/r0b0tlab/deepseek-v4-flash-nvfp4-sm121:latest
+    container_name: deepseek-v4-nvfp4
+    restart: unless-stopped
+    
+    # GPU access
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # Network
+    network_mode: host
+    ipc: host
+    
+    # Volumes
+    volumes:
+      # Option A: Mount pre-downloaded weights
+      - /path/to/weights:/mnt/model:ro
+      
+      # Option B: Use HF token for auto-download (comment out above, uncomment below)
+      # - ./weights:/mnt/model
+    
+    # Environment
+    environment:
+      # Required: HF token for auto-download or gated model access
+      - HF_TOKEN=${HF_TOKEN:-}
+      
+      # Serving configuration
+      - PORT=8000
+      - GPU_MEM_UTIL=0.70
+      - MAX_MODEL_LEN=32768
+      - MAX_SEQS=2
+      - KV_CACHE_DTYPE=fp8
+      
+      # Network interface (adjust for your QSFP setup)
+      - GLOO_SOCKET_IFNAME=enp1s0f0np0
+      - TP_SOCKET_IFNAME=enp1s0f0np0
+      - NCCL_SOCKET_IFNAME=enp1s0f0np0
+      
+      # Extra vLLM arguments (optional)
+      - EXTRA_ARGS=--reasoning-parser deepseek --tool-call-parser deepseek --enable-auto-tool-choice
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "bash", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
