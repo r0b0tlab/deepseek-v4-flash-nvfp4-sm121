@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek-V4-Flash NVFP4 — SM121 Optimization Report (Updated)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --fg: #c9d1d9;
+    --accent: #58a6ff;
+    --warn: #f0883e;
+    --err: #f85149;
+    --ok: #3fb950;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.6;
+    padding: 2rem;
+  }
+  h1 {
+    font-size: 2rem;
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+  }
+  .subtitle {
+    color: #8b949e;
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .card h2 {
+    font-size: 1.2rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .status-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .status-item:last-child { border-bottom: none; }
+  .badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .badge-ok { background: rgba(63, 185, 80, 0.15); color: var(--ok); }
+  .badge-warn { background: rgba(240, 136, 62, 0.15); color: var(--warn); }
+  .badge-err { background: rgba(248, 81, 73, 0.15); color: var(--err); }
+  .badge-info { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+  .score {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .score-label {
+    font-size: 0.9rem;
+    color: #8b949e;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .highlight {
+    background: rgba(88, 166, 255, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 3px solid var(--accent);
+    margin: 1rem 0;
+  }
+  .error-box {
+    background: rgba(248, 81, 73, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 3px solid var(--err);
+    margin: 1rem 0;
+  }
+  .success-box {
+    background: rgba(63, 185, 80, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 3px solid var(--ok);
+    margin: 1rem 0;
+  }
+  code {
+    font-family: 'SF Mono', Monaco, monospace;
+    background: rgba(255,255,255,0.05);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+  .footer {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: #8b949e;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>🔥 DeepSeek-V4-Flash NVFP4 — SM121 Optimization Report</h1>
+<p class="subtitle">Dual GB10 (SM12.1) deployment investigation — Updated with DSV4-Flash lessons learned</p>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:2rem;">
+    <div>
+      <div class="score">68/100</div>
+      <div class="score-label">Overall Score</div>
+    </div>
+    <div style="flex:1;">
+      <div class="status-item">
+        <span>Model Loading</span>
+        <span class="badge badge-warn">PARTIAL</span>
+      </div>
+      <div class="status-item">
+        <span>Inference</span>
+        <span class="badge badge-err">BLOCKED</span>
+      </div>
+      <div class="status-item">
+        <span>Multi-Node Ray</span>
+        <span class="badge badge-ok">WORKING</span>
+      </div>
+      <div class="status-item">
+        <span>NVFP4 MoE Kernels</span>
+        <span class="badge badge-err">NOT SUPPORTED</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>📋 Executive Summary</h2>
+  <div class="error-box">
+    <strong>Critical Finding:</strong> The NVIDIA <code>DeepSeek-V4-Flash-NVFP4</code> checkpoint uses <strong>NVFP4</strong> quantization, but the previously successful DSV4-Flash deployment on SM12.1 used a <strong>MXFP4</strong> checkpoint with a custom vLLM build. These are <strong>incompatible</strong> quantization formats.
+  </div>
+  <p>After extensive investigation using the proven DSV4-Flash SM121 vLLM build (commit <code>dda4668b</code>), we discovered that:</p>
+  <ul style="margin:1rem 0 1rem 1.5rem;">
+    <li>The pinned build was designed for <strong>MXFP4</strong> MoE, not NVFP4</li>
+    <li>All MXFP4 backends (<code>deep_gemm</code>, <code>triton</code>, <code>flashinfer_trtllm</code>) fail on SM12.1 with "kernel does not support current device cuda"</li>
+    <li>The NVFP4 path in vLLM 0.22.1 supports <code>flashinfer_b12x</code> but fails with PyTorch FP8 ScalarType 44</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>🔍 Hardware Configuration</h2>
+  <div class="status-grid">
+    <div class="status-item">
+      <span>Node 1 GPU</span>
+      <span>NVIDIA GB10 (SM 12.1) — 121.69 GiB</span>
+    </div>
+    <div class="status-item">
+      <span>Node 2 GPU</span>
+      <span>NVIDIA GB10 (SM 12.1) — 121.69 GiB</span>
+    </div>
+    <div class="status-item">
+      <span>Total GPU Memory</span>
+      <span>243.38 GiB</span>
+    </div>
+    <div class="status-item">
+      <span>Interconnect</span>
+      <span>QSFP 192.168.100.x — ~1.1 GB/s</span>
+    </div>
+    <div class="status-item">
+      <span>Ray Cluster</span>
+      <span class="badge badge-ok">2 Nodes, 2 GPUs, 40 CPUs</span>
+    </div>
+    <div class="status-item">
+      <span>Model Size</span>
+      <span>168.30 GB (fits with 75 GiB headroom)</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🧪 Investigation Results</h2>
+  
+  <h3 style="color:var(--warn);margin:1rem 0 0.5rem;">Attempt 1: vLLM 0.22.1 (pip-installed)</h3>
+  <table>
+    <tr><th>Component</th><th>Status</th><th>Details</th></tr>
+    <tr>
+      <td>PyTorch</td>
+      <td><span class="badge badge-ok">OK</span></td>
+      <td>2.11.0+cu130, CUDA 13.0, FP8 supported</td>
+    </tr>
+    <tr>
+      <td>Model Loading</td>
+      <td><span class="badge badge-ok">OK</span></td>
+      <td>46/46 shards loaded across dual GB10</td>
+    </tr>
+    <tr>
+      <td>NVFP4 MoE Backend</td>
+      <td><span class="badge badge-ok">OK</span></td>
+      <td><code>flashinfer_b12x</code> selected for SM12.1</td>
+    </tr>
+    <tr>
+      <td>FP8 KV Cache</td>
+      <td><span class="badge badge-err">FAILED</span></td>
+      <td><code>ScalarType 44 (float8_e4m3fn) not supported</code></td>
+    </tr>
+  </table>
+
+  <h3 style="color:var(--warn);margin:1rem 0 0.5rem;">Attempt 2: Pinned DSV4 Build (dda4668b)</h3>
+  <table>
+    <tr><th>Component</th><th>Status</th><th>Details</th></tr>
+    <tr>
+      <td>PyTorch</td>
+      <td><span class="badge badge-ok">OK</span></td>
+      <td>2.11.0+cu130, CUDA 13.0, FP8 supported</td>
+    </tr>
+    <tr>
+      <td>Quantization Detection</td>
+      <td><span class="badge badge-warn">MISMATCH</span></td>
+      <td>Checkpoint: NVFP4, Build expects: MXFP4</td>
+    </tr>
+    <tr>
+      <td>MXFP4 Backends</td>
+      <td><span class="badge badge-err">ALL FAILED</span></td>
+      <td><code>deep_gemm</code>, <code>triton</code>, <code>flashinfer_trtllm</code> — none support SM12.1</td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>⚠️ Critical Blockers</h2>
+  <div class="error-box">
+    <strong>DSV4-007: PyTorch FP8 ScalarType 44 (vLLM 0.22.1)</strong><br>
+    <code>Not yet supported ScalarType 44</code> — PyTorch on GB10 lacks <code>float8_e4m3fn</code> support. The model requires FP8 KV cache which is mandatory for DeepSeek-V4.
+  </div>
+  <div class="error-box">
+    <strong>DSV4-008: MXFP4 vs NVFP4 Quantization Mismatch (Pinned Build)</strong><br>
+    The proven SM12.1 vLLM build (<code>dda4668b</code>) was designed for MXFP4 MoE, but the NVIDIA checkpoint uses NVFP4. All MXFP4 backends fail on SM12.1 with "kernel does not support current device cuda".
+  </div>
+  <div class="error-box">
+    <strong>DSV4-009: No Working Backend for NVFP4 on SM12.1</strong><br>
+    The <code>flashinfer_b12x</code> backend (NVFP4 SM12.1) works in vLLM 0.22.1 but is blocked by FP8 ScalarType 44. The pinned build has no <code>flashinfer_b12x</code> backend at all.
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎯 Root Cause Analysis</h2>
+  <div class="highlight">
+    <strong>The DSV4-Flash deployment that achieved c=1 38.4 t/s on SM12.1 used a DIFFERENT checkpoint with MXFP4 quantization.</strong>
+  </div>
+  <p>The NVIDIA <code>DeepSeek-V4-Flash-NVFP4</code> checkpoint is a <strong>different quantization variant</strong> that requires:</p>
+  <ul style="margin:1rem 0 1rem 1.5rem;">
+    <li>NVFP4 MoE kernels (not MXFP4)</li>
+    <li><code>flashinfer_b12x</code> backend for SM12.1 (only in vLLM 0.22.1+)</li>
+    <li>PyTorch with FP8 <code>float8_e4m3fn</code> ScalarType 44 support</li>
+  </ul>
+  <p>The current PyTorch 2.11.0+cu130 build <strong>does support FP8</strong> (<code>hasattr(torch, "float8_e4m3fn") == True</code>), but the vLLM 0.22.1 code path hits a different FP8 scalar type that is not yet supported in the stable value conversions.</p>
+</div>
+
+<div class="card">
+  <h2>🛣️ Path Forward</h2>
+  <div class="success-box">
+    <strong>Option A (Recommended): Find MXFP4 Checkpoint</strong><br>
+    Locate a DeepSeek-V4-Flash checkpoint with MXFP4 quantization that is compatible with the proven pinned build (<code>dda4668b</code>). This would immediately work on dual GB10 with c=1 ~38 t/s.
+  </div>
+  <div class="highlight">
+    <strong>Option B: Custom vLLM Build</strong><br>
+    Combine the NVFP4 path from vLLM 0.22.1 with the PyTorch 2.11.0+cu130 and CUDA 13.2 environment from the pinned build. Requires significant build engineering.
+  </div>
+  <div class="error-box">
+    <strong>Option C: Wait for Upstream</strong><br>
+    Wait for PyTorch 2.6+ with full SM12.1 FP8 support and vLLM update with NVFP4 <code>flashinfer_b12x</code> backend. Timeline unknown.
+  </div>
+</div>
+
+<div class="card">
+  <h2>📁 Artifacts</h2>
+  <div class="status-grid">
+    <div class="status-item">
+      <span>GitHub Repo</span>
+      <a href="https://github.com/r0b0tlab/deepseek-v4-flash-nvfp4-sm121" style="color:var(--accent);">r0b0tlab/deepseek-v4-flash-nvfp4-sm121</a>
+    </div>
+    <div class="status-item">
+      <span>Plan File</span>
+      <code>~/wiki/_agent/plans/deepseek-v4-flash-nvfp4-sm121.md</code>
+    </div>
+    <div class="status-item">
+      <span>DSV4 Build Context</span>
+      <code>~/spark-vllm-docker/</code>
+    </div>
+    <div class="status-item">
+      <span>Weights (Node 1)</span>
+      <code>~/deepseek-v4-nvfp4/weights/</code>
+    </div>
+    <div class="status-item">
+      <span>Weights (Node 2)</span>
+      <code>~/deepseek-v4-nvfp4/weights/</code>
+    </div>
+    <div class="status-item">
+      <span>Pinned vLLM Venv (Py 3.12)</span>
+      <code>~/vllm-dsv4-py312/</code>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Report generated: 2026-06-13 | Plan version: 1.2.0 | Score: 68/100 | Next: Find MXFP4 checkpoint or build custom vLLM
+</div>
+
+</body>
+</html>
